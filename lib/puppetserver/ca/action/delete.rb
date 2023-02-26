@@ -54,7 +54,7 @@ BANNER
             end
             opts.on('--certname NAME[,NAME]', Array,
               'One or more comma-separated certnames for which to delete signed certificates') do |certs|
-              parsed['certnames'] = [certs].flatten
+              parsed['certname'] = [certs].flatten
             end
             opts.on('--all', 'Delete all signed certificates on disk') do |all|
               parsed['all'] = true
@@ -68,8 +68,8 @@ BANNER
 
           errors = CliParsing.parse_with_errors(parser, args)
 
-          if results['certnames']
-            results['certnames'].each do |certname|
+          if results['certname']
+            results['certname'].each do |certname|
               if CERTNAME_BLOCKLIST.include?(certname)
                 errors << "    Cannot manage cert named `#{certname}` from "+
                           "the CLI. If needed, use the HTTP API directly."
@@ -77,7 +77,7 @@ BANNER
             end
           end
 
-          unless results['help'] || results['expired'] || results['revoked'] || results['certnames'] || results['all']
+          unless results['help'] || results['expired'] || results['revoked'] || results['certname'] || results['all']
             errors << '  Must pass one of the valid flags to determine which certs to delete'
           end
 
@@ -89,7 +89,6 @@ BANNER
 
         def run(args)
           config = args['config']
-          deleted_count = 0
 
           # Validate the config path
           if config
@@ -107,6 +106,7 @@ BANNER
 
           # Perform the desired action, keeping track if any errors occurred
           errored = false
+          deleted_count = 0
           inventory_file_path = File.join(settings[:cadir], 'inventory.txt')
 
           if args['expired']
@@ -123,10 +123,15 @@ BANNER
             count, err = delete_expired_certs(settings[:cadir], other_certs_to_check)
             deleted_count += count
             errored ||= err
-            plural = deleted_count > 1 ? "s" : ""
-            @logger.inform("#{deleted_count} expired certificate#{plural} deleted.")
           end
 
+          if args['certname']
+            count, errored = delete_certs(settings[:cadir], args['certname'])
+            deleted_count += count
+          end
+
+          plural = deleted_count == 1 ? "" : "s"
+          @logger.inform("#{deleted_count} certificate#{plural} deleted.")
           # If encountered non-fatal errors (an invalid entry in inventory.txt, cert not existing on disk)
           # return 24. Returning 1 should be for fatal errors where we could not do any part of the action.
           return errored ? 24 : 0
@@ -174,7 +179,7 @@ BANNER
               next
             end
             if cert.not_after < Time.now
-              @logger.inform("Deleting expired certificate at #{f}")
+              @logger.inform("Deleting certificate at #{f}")
               File.delete(f)
               deleted += 1
             end
